@@ -1,7 +1,8 @@
-<?php namespace Haruncpi\LaravelIdGenerator;
+<?php
 
-use Illuminate\Support\Facades\DB;
-use Exception;
+namespace Haruncpi\LaravelIdGenerator;
+
+use Illuminate\Support\Facades\DB, Exception;
 
 /**
  * IdGenerator Class
@@ -27,8 +28,7 @@ class IdGenerator
         $database = DB::connection($connection)->getDatabaseName();
 
         if ($driver == 'mysql') {
-            $sql = 'SELECT column_name AS "column_name",data_type AS "data_type",column_type AS "column_type" ';
-            $sql .= 'FROM information_schema.columns ';
+            $sql = 'SELECT column_name AS "column_name",data_type AS "data_type",column_type AS "column_type" FROM information_schema.columns ';
             $sql .= 'WHERE table_schema=:database AND table_name=:table';
         } else {
             // column_type not available in postgres SQL
@@ -43,6 +43,7 @@ class IdGenerator
 
         foreach ($rows as $col) {
             if ($field == $col->column_name) {
+
                 $fieldType = $col->data_type;
                 //column_type not available in postgres SQL
                 //mysql 8 optional display width for int,bigint numeric field
@@ -59,9 +60,7 @@ class IdGenerator
             }
         }
 
-        if ($fieldType == null) {
-            throw new Exception("$field not found in $table table");
-        }
+        if ($fieldType == null) throw new Exception("$field not found in $table table");
         return ['type' => $fieldType, 'length' => $fieldLength];
     }
 
@@ -88,20 +87,18 @@ class IdGenerator
         }
 
         if (array_key_exists('where', $configArr)) {
-            if (is_string($configArr['where'])) {
+            if (is_string($configArr['where']))
                 throw new Exception('where clause must be an array, you provided string');
-            }
-            if (!count($configArr['where'])) {
+            if (!count($configArr['where']))
                 throw new Exception('where clause must need at least an array');
-            }
         }
 
+        $connection = config('database.default');
+        $driver = DB::connection($connection)->getDriverName();
         $table = $configArr['table'];
         $field = array_key_exists('field', $configArr) ? $configArr['field'] : 'id';
         $prefix = $configArr['prefix'];
-        $resetOnPrefixChange =  array_key_exists('reset_on_prefix_change', $configArr)
-                                ? $configArr['reset_on_prefix_change']
-                                : false;
+        $resetOnPrefixChange = array_key_exists('reset_on_prefix_change', $configArr) ? $configArr['reset_on_prefix_change'] : false;
         $length = $configArr['length'];
 
         $fieldInfo = (new self)->getFieldType($table, $field);
@@ -129,13 +126,15 @@ class IdGenerator
         $whereString = rtrim($whereString, 'AND ');
 
 
-        $totalQuery = sprintf("SELECT count(`%s`) total FROM %s %s", $field, $configArr['table'], $whereString);
+        $totalQuery = sprintf("SELECT count(%s) total FROM %s %s", $field, $configArr['table'], $whereString);
         $total = DB::select(trim($totalQuery));
 
         if ($total[0]->total) {
             if ($resetOnPrefixChange) {
-                $maxIdSql = "SELECT MAX(%s) AS maxid FROM %s WHERE %s LIKE %s";
-                $maxQuery = sprintf($maxIdSql, $field, $table, $field, "'" . $prefix . "%'");
+                $maxQuery = sprintf("SELECT MAX(%s) AS maxid FROM %s WHERE %s LIKE %s", $field, $table, $field, "'" . $prefix . "%'");
+                if ($driver == 'pgsql') {
+                    $maxQuery = sprintf("SELECT MAX(%s) AS maxid FROM %s WHERE CAST(%s AS text) LIKE %s", $field, $table, $field, "'" . $prefix . "%'");
+                }
             } else {
                 $maxQuery = sprintf("SELECT MAX(%s) AS maxid FROM %s", $field, $table);
             }
